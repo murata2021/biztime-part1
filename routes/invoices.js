@@ -41,7 +41,7 @@ router.post('/',async(req,res,next)=>{
         const {comp_code,amt}=req.body;
 
         if (!comp_code || !amt ){
-            throw new ExpressError('The invoice data format should be {comp_code, amt}')
+            throw new ExpressError('The invoice data format should be {comp_code, amt}',400)
         }
         const results=await db.query('INSERT INTO invoices (comp_code,amt) VALUES ($1,$2) RETURNING *',[comp_code,amt])
         return res.json({invoice:results.rows[0]})
@@ -53,20 +53,48 @@ router.post('/',async(req,res,next)=>{
 
 //PUT /invoices/[id]
 router.put('/:id',async(req,res,next)=>{
+    
     try{
 
         const {id}=req.params;
-        const {amt}=req.body;
+        const {amt,paid}=req.body;
 
-        if (!amt){
-            throw new ExpressError('The data format should be {amt}')
+        console.log(amt)
+        console.log(paid)
+        console.log("**************************")
+
+        if (!amt || !paid){
+            throw new ExpressError('The data format should be {amt,paid}',400)
         }
-        const results=await db.query('UPDATE invoices SET amt=$2 WHERE id=$1 RETURNING *',[id,amt])
-        if (results.rows.length===0){
+
+        const res1=await db.query("SELECT * FROM invoices WHERE id=$1",[id]);
+        if (res1.rows.length===0){
             throw new ExpressError(`Can't find invoice with id of ${id}`,404)
         }
-        return res.json({invoice:results.rows[0]})
+
+        if (paid===true){
+
+            let payment_date=new Date();
+            const results=await db.query('UPDATE invoices SET amt=$2,paid_date=$3 WHERE id=$1 RETURNING *',[id,amt,payment_date])
+            console.log(results.rows)
+        }
+        else if (paid===false){
+            let payment_date=null
+            const results=await db.query('UPDATE invoices SET amt=$2,paid_date=$3 WHERE id=$1 RETURNING *',[id,amt,payment_date])
+            console.log(results.rows)
+
+        }
+        else {
+            const results=await db.query('UPDATE invoices SET amt=$2 WHERE id=$1 RETURNING *',[id,amt])
+            console.log(results.rows)
+        }
+
+        const final_res=await db.query('SELECT * FROM invoices WHERE id=$1',[id]);
+        console.log(final_res.rows)
+        return res.json({invoice:final_res.rows[0]})
+
     }
+
     catch(e){
         return next(e)
     }

@@ -5,6 +5,7 @@ const ExpressError=require("../expressError");
 const router=express.Router();
 const db=require("../db");
 
+const slugify=require("slugify")
 
 //GET /companies
 router.get('/',async(req,res,next)=>{
@@ -25,12 +26,21 @@ router.get('/:code',async(req,res,next)=>{
 
     try{
         const {code}=req.params;
-        const results=await db.query('SELECT * FROM companies WHERE code=$1 ;',[code])
+        // const results=await db.query('SELECT * FROM companies WHERE code=$1 ;',[code])
+
+        const results=await db.query(`SELECT * FROM companies AS comp
+        LEFT JOIN companies_industries AS comp_ind ON comp.code=comp_ind.comp_code
+        LEFT JOIN industries as ind ON comp_ind.ind_code=ind.code
+        WHERE comp.code=$1 `,[code])
+
+
         if(results.rows.length===0){
             throw new ExpressError(`Can't find company with code of ${code}`,404)
         }
         const invoicesResults=await db.query('SELECT * FROM invoices WHERE comp_code=$1',[code])
-        return res.json({company:results.rows[0],invoices:invoicesResults.rows})
+        const {name,description}=results.rows[0]
+        const industries=results.rows.map((el)=>el.industry)
+        return res.json({company:{code,name,description,industries,invoices:invoicesResults.rows}})
     }
     catch (e){
         return next(e)
@@ -40,12 +50,14 @@ router.get('/:code',async(req,res,next)=>{
 //POST /companies
 router.post('/',async(req,res,next)=>{
     try{
-        const {code,name,description}=req.body;
+        let {code,name,description}=req.body;
 
         if (!code || !name || !description){
-            throw new ExpressError('The company data format should be {code, name, description}')
+            throw new ExpressError('The company data format should be {code, name, description}',400)
         }
-        const results=await db.query('INSERT INTO companies (code,name,description) VALUES ($1,$2,$3)',[code,name,description])
+        name=slugify(name,{lower: true,remove: /[*+~.()'"!:@]/g})
+        const results=await db.query('INSERT INTO companies (code,name,description) VALUES ($1,$2,$3)',
+        [code,name,description])
         return res.json({company:{code,name,description}})
     }
     catch(e){
@@ -60,7 +72,7 @@ router.put('/:code',async(req,res,next)=>{
         const {name,description}=req.body;
 
         if (!name || !description){
-            throw new ExpressError('The company data format should be {name, description}')
+            throw new ExpressError('The company data format should be {name, description}',400)
         }
 
         const results=await db.query('UPDATE companies SET name=$2,description=$3 WHERE code=$1 RETURNING *',[code,name,description])
